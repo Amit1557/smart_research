@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartDoc RAG | Machine Learning & Gen AI Document Assistant</title>
+    <meta name="description" content="Production-ready Intelligent Document Assistant showcasing Machine Learning, Vector RAG with Qdrant, and Generative AI with Google Gemini.">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Marked.js for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Background Gradient Spheres -->
+    <div class="bg-blur sphere-1"></div>
+    <div class="bg-blur sphere-2"></div>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo-badge">
+                    <span class="logo-icon">⚡</span>
+                </div>
+                <div>
+                    <h1 class="app-title">SmartDoc <span class="gradient-text">RAG Assistant</span></h1>
+                    <p class="app-subtitle">Intelligent Document Intelligence & Research Platform</p>
+                </div>
+            </div>
+
+            <!-- Tech Badges -->
+            <div class="tech-pills">
+                <span class="pill pill-ml">
+                    <span class="dot"></span> ML: Sentence-Transformers (384-d)
+                </span>
+                <span class="pill pill-rag">
+                    <span class="dot"></span> RAG: Qdrant Vector DB
+                </span>
+                <span class="pill pill-genai">
+                    <span class="dot"></span> Gen AI: Google Gemini
+                </span>
+            </div>
+        </header>
+
+        <!-- Main Grid Layout -->
+        <main class="main-grid">
+            <!-- Left Column: Document Ingestion -->
+            <section class="card panel-ingest" aria-labelledby="ingest-heading">
+                <div class="card-header">
+                    <div class="header-icon">📄</div>
+                    <div>
+                        <h2 id="ingest-heading" class="card-title">1. Document Knowledge Ingestion</h2>
+                        <p class="card-desc">Chunk text and compute dense vector embeddings via PyTorch</p>
+                    </div>
+                </div>
+
+                <!-- Sample Presets -->
+                <div class="presets-section">
+                    <span class="presets-label">Quick Samples:</span>
+                    <button type="button" class="preset-btn" id="btn-sample-policy">Company HR Policy</button>
+                    <button type="button" class="preset-btn" id="btn-sample-research">AI Research Abstract</button>
+                    <button type="button" class="preset-btn" id="btn-sample-warranty">Product Warranty</button>
+                </div>
+
+                <div class="form-group">
+                    <label for="doc-title" class="input-label">Document Title</label>
+                    <input type="text" id="doc-title" class="input-field" placeholder="e.g. Employee Handbook 2026" value="Company Policy & Perks Handbook">
+                </div>
+
+                <div class="form-group">
+                    <label for="doc-text" class="input-label">Document Content</label>
+                    <textarea id="doc-text" class="textarea-field" rows="11" placeholder="Paste your document content or text here..."></textarea>
+                </div>
+
+                <div class="action-row">
+                    <button type="button" id="btn-index" class="btn btn-primary">
+                        <span class="btn-icon">⚡</span> Index & Embed Document
+                    </button>
+                    <button type="button" id="btn-reset" class="btn btn-ghost" title="Reset In-Memory Vector Store">
+                        Reset Memory
+                    </button>
+                </div>
+
+                <!-- Live Ingestion Metrics Card -->
+                <div id="ingest-stats" class="stats-card hidden">
+                    <div class="stats-header">
+                        <span class="status-indicator"></span>
+                        <span id="ingest-status-text">Vector Indexing Completed</span>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <span class="stat-val" id="stat-chunks">0</span>
+                            <span class="stat-label">Chunks Created</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-val" id="stat-dim">384-D</span>
+                            <span class="stat-label">Vector Dimension</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-val" id="stat-time">0 ms</span>
+                            <span class="stat-label">Encoding Latency</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Column: Semantic Search & Gen AI Response -->
+            <section class="card panel-query" aria-labelledby="query-heading">
+                <div class="card-header">
+                    <div class="header-icon">💬</div>
+                    <div>
+                        <h2 id="query-heading" class="card-title">2. Grounded Q&A & Semantic Retrieval</h2>
+                        <p class="card-desc">Cosine Similarity search + Google Gemini answer generation</p>
+                    </div>
+                </div>
+
+                <!-- Query Form -->
+                <form id="query-form" class="query-box">
+                    <input type="text" id="query-input" class="input-field query-input" placeholder="Ask any question about your document..." required autocomplete="off">
+                    <button type="submit" id="btn-ask" class="btn btn-primary btn-ask">
+                        <span>Search & Ask</span>
+                        <span class="btn-arrow">→</span>
+                    </button>
+                </form>
+
+                <!-- Suggested Questions -->
+                <div class="suggested-chips" id="suggested-container">
+                    <span class="chips-label">Try asking:</span>
+                    <button type="button" class="chip-btn" data-query="What is the annual leave and work from home policy?">Leave & WFH Policy?</button>
+                    <button type="button" class="chip-btn" data-query="What health insurance and wellness perks are offered?">Health & Wellness Perks?</button>
+                    <button type="button" class="chip-btn" data-query="What is the notice period for resignation?">Notice Period?</button>
+                </div>
+
+                <!-- Loading State -->
+                <div id="loading-spinner" class="loading-container hidden">
+                    <div class="pulsing-loader"></div>
+                    <p class="loading-text">Computing ML query vector ➔ Searching Qdrant ➔ Prompting Gemini...</p>
+                </div>
+
+                <!-- Output Display Container -->
+                <div id="results-container" class="results-container hidden">
+                    <!-- 1. Gen AI Answer Box -->
+                    <div class="result-block answer-block">
+                        <div class="block-header">
+                            <div class="block-title-row">
+                                <span class="block-icon">🤖</span>
+                                <h3 class="block-title">Generative AI Response (Grounded)</h3>
+                            </div>
+                            <span class="badge badge-gemini">Google Gemini</span>
+                        </div>
+                        <div id="answer-content" class="answer-content markdown-body"></div>
+                    </div>
+
+                    <!-- 2. ML Metrics Breakdown -->
+                    <div class="result-block ml-metrics-block">
+                        <div class="block-header">
+                            <div class="block-title-row">
+                                <span class="block-icon">🧠</span>
+                                <h3 class="block-title">Machine Learning Telemetry</h3>
+                            </div>
+                            <span class="badge badge-ml">PyTorch Model</span>
+                        </div>
+                        <div class="metrics-row">
+                            <div class="metric-item">
+                                <span class="metric-title">Highest Cosine Match:</span>
+                                <span class="metric-value highlight" id="metric-score">0%</span>
+                            </div>
+                            <div class="metric-item">
+                                <span class="metric-title">Dense Embeddings:</span>
+                                <span class="metric-value">384 Dimensions (all-MiniLM-L6-v2)</span>
+                            </div>
+                            <div class="metric-item">
+                                <span class="metric-title">Pipeline Latency:</span>
+                                <span class="metric-value" id="metric-latency">0 ms</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. RAG Retrieved Sources -->
+                    <div class="result-block sources-block">
+                        <div class="block-header">
+                            <div class="block-title-row">
+                                <span class="block-icon">📚</span>
+                                <h3 class="block-title">RAG Retrieved Chunks (Vector Store)</h3>
+                            </div>
+                            <span class="badge badge-qdrant">Qdrant In-Memory</span>
+                        </div>
+                        <div id="sources-list" class="sources-list"></div>
+                    </div>
+                </div>
+
+                <!-- Initial Empty State -->
+                <div id="empty-state" class="empty-state">
+                    <div class="empty-icon">🔍</div>
+                    <h3 class="empty-title">Ready for Your Queries</h3>
+                    <p class="empty-desc">Index a document on the left or click a sample preset, then ask any question to see ML embeddings, RAG retrieval, and Gen AI in action!</p>
+                </div>
+            </section>
+        </main>
+
+        <!-- Technical Flow / Educational Footer -->
+        <footer class="app-footer">
+            <div class="footer-card">
+                <h3 class="footer-heading">📐 How This Project Works (Architecture Pipeline):</h3>
+                <div class="pipeline-steps">
+                    <div class="step-card">
+                        <span class="step-num">1</span>
+                        <div class="step-info">
+                            <strong>Text Chunking</strong>
+                            <p>Splits documents into coherent overlapping windows for contextual preservation.</p>
+                        </div>
+                    </div>
+                    <div class="step-card">
+                        <span class="step-num">2</span>
+                        <div class="step-info">
+                            <strong>PyTorch ML Embeddings</strong>
+                            <p>Generates 384-d semantic dense vectors using Sentence-Transformers.</p>
+                        </div>
+                    </div>
+                    <div class="step-card">
+                        <span class="step-num">3</span>
+                        <div class="step-info">
+                            <strong>Qdrant Vector DB</strong>
+                            <p>Performs high-speed Cosine Similarity search to extract Top-K relevant chunks.</p>
+                        </div>
+                    </div>
+                    <div class="step-card">
+                        <span class="step-num">4</span>
+                        <div class="step-info">
+                            <strong>Gemini Gen AI</strong>
+                            <p>Synthesizes zero-hallucination answers grounded strictly in retrieved context.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
