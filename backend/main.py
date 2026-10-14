@@ -2,9 +2,9 @@
 SmartDoc RAG - Intelligent Document Research Assistant
 ======================================================
 Showcases 3 Core Pillars:
-1. Machine Learning (ML)   : PyTorch Sentence-Transformers (all-MiniLM-L6-v2) for 384-dim dense embeddings & Cosine Similarity.
+1. Machine Learning (ML)   : PyTorch HuggingFace Transformers (all-MiniLM-L6-v2) for 384-dim dense embeddings & Cosine Similarity.
 2. RAG Pipeline            : Document Chunking + Qdrant Vector Database for semantic search.
-3. Generative AI (Gen AI)  : Google Gemini API (gemini-1.5-flash) with grounded prompt engineering.
+3. Generative AI (Gen AI)  : Google Gemini API (gemini-3-flash-preview) with grounded prompt engineering.
 """
 
 import os
@@ -24,8 +24,10 @@ from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
-# Sentence Transformers (PyTorch-based ML model)
-from sentence_transformers import SentenceTransformer
+# Pure PyTorch & Transformers
+import torch
+import torch.nn.functional as F
+from transformers import AutoTokenizer, AutoModel
 
 # Load environment variables
 BASE_DIR = Path(__file__).resolve().parent
@@ -35,15 +37,35 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("smart-rag")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. MACHINE LEARNING & EMBEDDINGS LAYER
+# 1. MACHINE LEARNING & EMBEDDINGS LAYER (PyTorch + Transformers)
 # ─────────────────────────────────────────────────────────────────────────────
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384
 
-logger.info(f"Loading ML Embedding Model: {EMBEDDING_MODEL_NAME}...")
-# Loads local transformer model onto CPU - zero API cost
-embed_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-logger.info("ML Model loaded successfully.")
+class PyTorchTransformerEmbedder:
+    """Native PyTorch transformer embedder (zero scipy dependency, runs smoothly on CPU)."""
+    def __init__(self, model_name: str = EMBEDDING_MODEL_NAME):
+        self.model_name = model_name
+        logger.info(f"Loading PyTorch Transformer ML Model: {model_name}...")
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name)
+        self.model.eval()
+        logger.info("ML Model loaded successfully.")
+
+    def mean_pooling(self, model_output, attention_mask):
+        token_embeddings = model_output[0]
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+        return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+
+    def encode(self, texts: List[str]) -> List[List[float]]:
+        encoded_input = self.tokenizer(texts, padding=True, truncation=True, max_length=512, return_tensors='pt')
+        with torch.no_grad():
+            model_output = self.model(**encoded_input)
+        sentence_embeddings = self.mean_pooling(model_output, encoded_input['attention_mask'])
+        sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
+        return sentence_embeddings.tolist()
+
+embed_model = PyTorchTransformerEmbedder()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. VECTOR DATABASE (RAG LAYER - Qdrant)
@@ -69,16 +91,14 @@ init_vector_db()
 # 3. GENERATIVE AI (LLM LAYER - Google Gemini)
 # ─────────────────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview").strip()
 
 def call_gemini(prompt: str) -> str:
     """Invokes Google Gemini with the grounded RAG context."""
     if not GEMINI_API_KEY or GEMINI_API_KEY.startswith("your_"):
         return (
             "⚠️ **Gemini API Key is missing!**\n\n"
-            "To get live Gen AI answers, create a free API key at "
-            "[Google AI Studio](https://aistudio.google.com/app/apikey) "
-            "and add it to `backend/.env`.\n\n"
+            "To get live Gen AI answers, please add your key to `backend/.env`.\n\n"
             "*(Notice: The ML Embeddings and RAG Vector Retrieval above are working 100% locally!)*"
         )
 
@@ -92,7 +112,7 @@ def call_gemini(prompt: str) -> str:
         return response.text or "No response generated."
     except Exception as e:
         logger.error(f"Gemini API Error: {e}")
-        return f"Error contacting Gemini API: {str(e)}"
+        return f"Error contacting Gemini API ({GEMINI_MODEL}): {str(e)}"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TEXT CHUNKER HELPER (RAG)
@@ -160,7 +180,7 @@ def index_document(req: IndexRequest):
     """
     RAG Step 1 & 2:
     - Splits text into chunks.
-    - Generates 384-dimensional dense vectors using SentenceTransformer.
+    - Generates 384-dimensional dense vectors using native PyTorch Transformer.
     - Upserts vectors into Qdrant.
     """
     start_time = time.time()
@@ -168,8 +188,8 @@ def index_document(req: IndexRequest):
     if not chunks:
         raise HTTPException(status_code=400, detail="Document text cannot be empty.")
 
-    # 1. ML Embedding generation
-    vectors = embed_model.encode(chunks, normalize_embeddings=True).tolist()
+    # 1. ML Embedding generation via PyTorch
+    vectors = embed_model.encode(chunks)
 
     # 2. Vector DB upsert
     points = [
@@ -200,7 +220,7 @@ def index_document(req: IndexRequest):
 def query_rag(req: QueryRequest):
     """
     RAG Step 3 & 4 + Gen AI:
-    - Encodes user question into vector.
+    - Encodes user question into vector via PyTorch.
     - Performs Cosine Similarity search in Qdrant for Top-K chunks.
     - Constructs grounded prompt.
     - Calls Google Gemini to generate fact-based response with citations.
@@ -215,15 +235,16 @@ def query_rag(req: QueryRequest):
             detail="Knowledge base is empty! Please index a document first.",
         )
 
-    # 1. ML Step: Encode question
-    query_vector = embed_model.encode(req.question, normalize_embeddings=True).tolist()
+    # 1. ML Step: Encode question via PyTorch
+    query_vector = embed_model.encode([req.question])[0]
 
     # 2. RAG Retrieval Step: Cosine Similarity search
-    search_results = qdrant.search(
+    search_response = qdrant.query_points(
         collection_name=COLLECTION_NAME,
-        query_vector=query_vector,
+        query=query_vector,
         limit=req.top_k,
     )
+    search_results = search_response.points
 
     retrieved_sources = []
     context_blocks = []
